@@ -4,21 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>eSIM 極速掃描器</title>
-    <!-- 改用基礎版核心，讓我們完全自訂 UI -->
     <script src="https://unpkg.com/html5-qrcode/html5-qrcode.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; padding: 20px; max-width: 500px; margin: auto; background-color: #f2f2f7; }
         
-        /* 掃描器視窗 */
-        #reader { width: 100%; border-radius: 12px; overflow: hidden; background-color: #000; margin-bottom: 20px; }
-        
-        /* 自訂按鈕樣式 (iOS 風格) */
         .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
         .btn { flex: 1; padding: 15px 10px; border-radius: 10px; text-align: center; font-weight: bold; font-size: 16px; cursor: pointer; border: none; }
         .btn-camera { background: #007aff; color: white; }
         .btn-upload { background: #e5e5ea; color: #007aff; display: block; }
         
-        /* 結果區塊 */
+        /* 🔥 預設隱藏掃描框，徹底消滅一開始的巨大黑洞 */
+        #reader { width: 100%; border-radius: 12px; overflow: hidden; background-color: #000; margin-bottom: 20px; display: none; }
+        
         .result-box { display: none; background: #ffffff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         .btn-install { display: block; background: #34c759; color: white; text-align: center; padding: 15px; border-radius: 10px; text-decoration: none; font-weight: bold; margin-top: 15px; }
     </style>
@@ -27,34 +24,27 @@
 
     <h2 style="text-align: center; margin-bottom: 20px;">新增 eSIM 行動方案</h2>
 
-    <!-- 自訂的兩顆大按鈕 -->
     <div class="btn-group">
         <button id="btn-camera" class="btn btn-camera">📷 開啟相機</button>
-        <!-- 使用 label 包裝 input file，達成點擊按鈕就開啟相簿的效果 -->
         <label for="file-upload" class="btn btn-upload">🖼️ 相簿 / 截圖</label>
         <input type="file" id="file-upload" accept="image/*" style="display: none;">
     </div>
 
-    <!-- 相機畫面顯示區 -->
+    <!-- 相機畫面顯示區 (預設隱藏) -->
     <div id="reader"></div>
 
-    <!-- 解析成功後顯示的區塊 -->
     <div id="result" class="result-box">
         <h3 style="margin-top:0; color: #34c759;">✅ 條碼解析成功</h3>
         <p style="color: #666; font-size: 14px;">伺服器：<br><strong style="color: #000;" id="smdp"></strong></p>
         <p style="color: #666; font-size: 14px;">啟用碼：<br><strong style="color: #000; word-break: break-all;" id="code"></strong></p>
         
         <a id="install-btn" href="#" class="btn-install">👉 點此一鍵安裝 eSIM</a>
-        <p style="font-size: 13px; color: #999; margin-top: 15px; line-height: 1.5;">
-            *若按鈕無效，請至 iPhone「設定 > 行動服務 > 加入 eSIM > 使用行動條碼 > 手動輸入詳細資訊」貼上上方資訊。
-        </p>
     </div>
 
     <script>
-        // 初始化核心套件 (開啟硬體加速)
         const html5QrCode = new Html5Qrcode("reader", { experimentalFeatures: { useBarCodeDetectorIfSupported: true } });
+        const readerDiv = document.getElementById('reader');
 
-        // 成功解析 QR Code 時的共同處理邏輯
         function handleScanSuccess(decodedText) {
             if (decodedText.startsWith("LPA:1$")) {
                 let parts = decodedText.split('$');
@@ -62,67 +52,63 @@
                     document.getElementById('smdp').innerText = parts[1];
                     document.getElementById('code').innerText = parts[2];
                     document.getElementById('install-btn').href = `https://esim.apple.com/?smdpAddress=${parts[1]}&activationCode=${parts[2]}`;
-                    
-                    // 顯示結果
                     document.getElementById('result').style.display = 'block';
                     
-                    // 如果相機還開著，就關閉它省電
+                    // 掃描成功後，關閉相機並再次隱藏黑框
                     if (html5QrCode.isScanning) {
-                        html5QrCode.stop().catch(err => console.log("相機關閉失敗", err));
+                        html5QrCode.stop().then(() => {
+                            readerDiv.style.display = 'none';
+                        }).catch(err => console.log(err));
                     }
                 }
             } else {
-                alert("這似乎不是有效的 eSIM QR Code 喔！\n掃描到的內容：" + decodedText);
+                alert("這似乎不是有效的 eSIM 條碼");
             }
         }
 
-        // 確保相機關閉的輔助函數 (避免相機跟圖片上傳衝突)
-        function stopCameraIfNeeded() {
-            if (html5QrCode.isScanning) {
-                return html5QrCode.stop();
-            }
-            return Promise.resolve();
-        }
-
-        // 功能 1：按鈕啟動相機
+        // 點擊「開啟相機」按鈕
         document.getElementById('btn-camera').addEventListener('click', () => {
-            // 隱藏之前的結果
             document.getElementById('result').style.display = 'none';
+            readerDiv.style.display = 'block'; // 點擊後才顯示黑框
             
+            // 強制啟動「後置鏡頭」(environment) 並套用高畫質
             html5QrCode.start(
-                { facingMode: "environment" }, // 強制後置鏡頭
-                { 
-                    fps: 30, // 每秒 30 幀超靈敏
-                    videoConstraints: { width: { ideal: 1920 }, height: { ideal: 1080 } } // 1080p 高畫質
-                },
+                { facingMode: "environment" }, 
+                { fps: 30, videoConstraints: { width: { ideal: 1920 }, height: { ideal: 1080 } } },
                 (decodedText) => { handleScanSuccess(decodedText); },
-                (errorMessage) => { /* 掃描過程的每一幀找不到條碼都會報錯，直接忽略即可 */ }
+                (errorMessage) => { /* 忽略掃描過程中的幀錯誤 */ }
             ).catch((err) => {
-                alert("無法啟動相機，請確認已允許網頁使用相機權限。");
+                alert("無法啟動相機，請確認網頁環境與相機權限。");
+                readerDiv.style.display = 'none'; // 失敗的話把黑框收起來
             });
         });
 
-        // 功能 2：從相簿上傳圖片 (選取檔案後自動觸發)
+        // 點擊「上傳圖片」
         document.getElementById('file-upload').addEventListener('change', (e) => {
             if (e.target.files.length === 0) return;
-            const imageFile = e.target.files[0];
-            
-            // 隱藏之前的結果
             document.getElementById('result').style.display = 'none';
 
-            // 先確保相機有被關掉，再來掃描上傳的圖片
-            stopCameraIfNeeded().then(() => {
-                // 第三個參數 false 表示不要在網頁上印出這張圖片，直接背景處理即可
-                html5QrCode.scanFile(imageFile, false)
+            let processImage = () => {
+                html5QrCode.scanFile(e.target.files[0], false)
                     .then(decodedText => {
                         handleScanSuccess(decodedText);
-                        e.target.value = ''; // 清空檔案選擇，允許重複選取同一張圖
+                        e.target.value = ''; 
                     })
                     .catch(err => {
-                        alert("找不到 QR Code！\n請嘗試用 iPhone 相簿把圖片「裁切」到只剩下條碼本身，再上傳一次。");
+                        alert("找不到 QR Code！請嘗試將圖片「裁切」到只剩條碼本身再上傳。");
                         e.target.value = '';
                     });
-            });
+            };
+
+            // 如果相機正開著，先關掉它避免衝突
+            if (html5QrCode.isScanning) {
+                html5QrCode.stop().then(() => {
+                    readerDiv.style.display = 'none';
+                    processImage();
+                });
+            } else {
+                processImage();
+            }
         });
     </script>
 
