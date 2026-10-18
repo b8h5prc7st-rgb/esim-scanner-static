@@ -1,144 +1,67 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>eSIM 網頁掃描器</title>
-  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-  <style>
-    body {
-      font-family: -apple-system, sans-serif;
-      padding: 20px;
-      max-width: 600px;
-      margin: auto;
-    }
-    #reader {
-      width: 100%;
-      border-radius: 8px;
-      overflow: hidden;
-      background: #000;
-    }
-    .result-box {
-      display: none;
-      background: #f2f2f7;
-      padding: 20px;
-      border-radius: 12px;
-      margin-top: 20px;
-    }
-    .btn-install {
-      display: block;
-      background: #007aff;
-      color: white;
-      text-align: center;
-      padding: 12px;
-      border-radius: 8px;
-      text-decoration: none;
-      font-weight: bold;
-      margin-top: 15px;
-    }
-    .row {
-      margin-top: 12px;
-    }
-    input[type="file"] {
-      display: block;
-      margin-top: 8px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eSIM 極速掃描器</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        body { font-family: -apple-system, sans-serif; padding: 20px; max-width: 500px; margin: auto; }
+        #reader { width: 100%; border-radius: 8px; overflow: hidden; background-color: #000; }
+        .result-box { display: none; background: #f2f2f7; padding: 20px; border-radius: 12px; margin-top: 20px; }
+        .btn-install { display: block; background: #007aff; color: white; text-align: center; padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 15px; }
+    </style>
 </head>
 <body>
-  <h2>掃描或上傳 eSIM 條碼</h2>
-  <p>請允許使用相機，或點選「Choose Image」上傳截圖。</p>
 
-  <div id="reader"></div>
+    <h2>掃描或上傳 eSIM 條碼</h2>
+    <div id="reader"></div>
 
-  <div class="row">
-    <label for="file-input">Choose Image（QR/screenshot）</label>
-    <input id="file-input" type="file" accept="image/*">
-  </div>
+    <div id="result" class="result-box">
+        <h3 style="margin-top:0;">✅ 解析成功！</h3>
+        <p><strong>伺服器：</strong><br><span id="smdp"></span></p>
+        <p><strong>啟用碼：</strong><br><span id="code"></span></p>
+        <a id="install-btn" href="#" class="btn-install">一鍵安裝 eSIM 到此手機</a>
+        <p style="font-size: 13px; color: #666; margin-top: 15px;">
+            *如果按鈕無效，請至 iPhone「設定 > 行動服務 > 加入 eSIM > 手動輸入詳細資訊」貼上上方資訊。
+        </p>
+    </div>
 
-  <div id="result" class="result-box" role="status" aria-live="polite">
-    <h3 style="margin-top:0;">✅ 解析成功！</h3>
-    <p><strong>伺服器：</strong><br><span id="smdp"></span></p>
-    <p><strong>啟用碼：</strong><br><span id="code"></span></p>
-
-    <a id="install-btn" href="#" class="btn-install" target="_blank" rel="noopener">一鍵安裝 eSIM 到此手機</a>
-
-    <p style="font-size: 13px; color: #666; margin-top: 15px;">
-      *如果按鈕無效，請至 iPhone「設定 &gt; 行動服務 &gt; 加入 eSIM &gt; 使用行動條碼 &gt; 手動輸入詳細資訊」貼上上方資訊。
-    </p>
-  </div>
-
-  <script>
-    function showResult(smdpAddress, activationCode) {
-      document.getElementById('smdp').innerText = smdpAddress;
-      document.getElementById('code').innerText = activationCode;
-
-      const iosInstallUrl =
-        `https://esim.apple.com/?smdpAddress=${encodeURIComponent(smdpAddress)}&activationCode=${encodeURIComponent(activationCode)}`;
-
-      document.getElementById('install-btn').href = iosInstallUrl;
-      document.getElementById('result').style.display = 'block';
-    }
-
-    function parseEsimString(decodedText) {
-      if (!decodedText) return null;
-
-      if (decodedText.startsWith("LPA:1$")) {
-        const parts = decodedText.split('$');
-        if (parts.length >= 3) {
-          const smdp = parts[1];
-          const activation = parts.slice(2).join('$');
-          return { smdp, activation };
+    <script>
+        function onScanSuccess(decodedText, decodedResult) {
+            if (decodedText.startsWith("LPA:1$")) {
+                let parts = decodedText.split('$');
+                if (parts.length >= 3) {
+                    document.getElementById('smdp').innerText = parts[1];
+                    document.getElementById('code').innerText = parts[2];
+                    document.getElementById('install-btn').href = `https://esim.apple.com/?smdpAddress=${parts[1]}&activationCode=${parts[2]}`;
+                    document.getElementById('result').style.display = 'block';
+                    html5QrcodeScanner.clear(); // 掃到就立刻關閉相機
+                }
+            } else {
+                alert("這似乎不是有效的 eSIM QR Code");
+            }
         }
-      }
 
-      return null;
-    }
+        // 🔥 超靈敏設定區
+        let html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader",
+            { 
+                fps: 30, // 【優化 1】將原本 10 幀拉高到每秒 30 次掃描判定
+                videoConstraints: {
+                    facingMode: "environment", // 強制使用後置主鏡頭
+                    width: { ideal: 1920 },    // 【優化 2】要求 1080p 解析度，小條碼也能看清
+                    height: { ideal: 1080 }
+                },
+                experimentalFeatures: {
+                    useBarCodeDetectorIfSupported: true // 【優化 3】大絕招：允許調用手機硬體的條碼辨識晶片（如果系統支援，速度會爆增）
+                }
+                // 注意：拿掉 qrbox，讓整個畫面都能成為掃描區，不需要辛苦對準框框
+            },
+            false
+        );
+        html5QrcodeScanner.render(onScanSuccess);
+    </script>
 
-    function onScanSuccess(decodedText) {
-      const parsed = parseEsimString(decodedText);
-
-      if (parsed) {
-        showResult(parsed.smdp, parsed.activation);
-        try { html5QrcodeScanner.clear(); } catch (e) {}
-      } else {
-        alert("這似乎不是有效的 eSIM QR Code。");
-      }
-    }
-
-    let html5QrcodeScanner = new Html5QrcodeScanner(
-      "reader",
-      { fps: 10, qrbox: { width: 280, height: 280 } },
-      false
-    );
-    html5QrcodeScanner.render(onScanSuccess);
-
-    document.getElementById('file-input').addEventListener('change', async (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-
-      let scannerInstance = null;
-
-      try {
-        scannerInstance = new Html5Qrcode("reader");
-
-        if (typeof scannerInstance.scanFileV2 === 'function') {
-          const result = await scannerInstance.scanFileV2(file, true);
-          const text = result && result.decodedText ? result.decodedText : result;
-          onScanSuccess(text);
-        } else if (typeof scannerInstance.scanFile === 'function') {
-          const result = await scannerInstance.scanFile(file, true);
-          const text = result && result.decodedText ? result.decodedText : result;
-          onScanSuccess(text);
-        } else {
-          throw new Error("此 html5-qrcode 版本不支援從檔案��描");
-        }
-      } catch (err) {
-        alert("從圖檔掃描失敗：" + (err && err.message ? err.message : err));
-      } finally {
-        try { if (scannerInstance) await scannerInstance.clear(); } catch (_) {}
-      }
-    });
-  </script>
 </body>
 </html>
